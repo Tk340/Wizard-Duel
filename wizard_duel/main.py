@@ -95,6 +95,60 @@ def diff_menu():
                     difficulty=diffs[sel]; STATE="AI"; return
                 if e.key==pygame.K_ESCAPE: STATE="MENU"; return
 
+def show_controls(mode):
+    window.fill(DARK_BLUE)
+    title = font_big.render("Controls 🪄", True, WHITE)
+    window.blit(title, (WIDTH // 2 - title.get_width() // 2, 60))
+
+    # Player 1 controls
+    y = 150
+    lines_p1 = [
+        "Player 1:",
+        "Move: W A S D",
+        "Fireball: SPACE",
+        "Lightning: F",
+        "Ice Spell: G",
+    ]
+    for line in lines_p1:
+        text = font.render(line, True, WHITE)
+        window.blit(text, (WIDTH // 4 - text.get_width() // 2, y))
+        y += 35
+
+    # Player 2 or AI controls
+    y = 150
+    if mode == "AI":
+        lines_p2 = [
+            "Enemy (AI):",
+            "Automatically moves and attacks!",
+        ]
+    else:
+        lines_p2 = [
+            "Player 2:",
+            "Move: Arrow Keys",
+            "Fireball: ENTER",
+            "Lightning: . (Period)",
+            "Ice Spell: / (Slash)",
+        ]
+    for line in lines_p2:
+        text = font.render(line, True, WHITE)
+        window.blit(text, (3 * WIDTH // 4 - text.get_width() // 2, y))
+        y += 35
+
+    # Footer
+    hint = font.render("Press ENTER to start!", True, YELLOW)
+    window.blit(hint, (WIDTH // 2 - hint.get_width() // 2, HEIGHT - 80))
+
+    pygame.display.flip()
+
+    waiting = True
+    while waiting:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_RETURN:
+                waiting = False
+
 # Game logic
 def play_game(mode,difficulty):
     # Cooldowns
@@ -288,8 +342,12 @@ def play_game(mode,difficulty):
 
 # State manager
 while True:
-    if STATE=="MENU": main_menu()
-    elif STATE=="DIFFICULTY": diff_menu()
-    elif STATE in ["AI","2P"]:
-        play_game(STATE,difficulty)
-        STATE="MENU"
+    if STATE == "MENU":
+        main_menu()
+    elif STATE == "DIFFICULTY":
+        diff_menu()
+    elif STATE in ["AI", "2P"]:
+        show_controls(STATE)  # 👈 this runs the controls screen
+        play_game(STATE, difficulty)
+        STATE = "MENU"
+
