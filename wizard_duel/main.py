@@ -1,206 +1,205 @@
-import pygame
-import random
-import sys
-
+import pygame, random, sys
 pygame.init()
 
-# --- Window setup ---
+# === Window ===
 WIDTH, HEIGHT = 800, 600
 window = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Wizard Duel - Real Time")
+pygame.display.set_caption("Wizard Duel - Main Menu")
 
-# --- Colors ---
-DARK_BLUE = (30, 30, 60)
+# === Colors ===
+DARK_BLUE = (25, 25, 60)
 RED = (255, 60, 60)
 GREEN = (0, 255, 100)
+YELLOW = (255, 255, 0)
 WHITE = (255, 255, 255)
 
-# --- Load sprites ---
-player_img = pygame.image.load("wizard_duel/assets/wizard_player.png").convert_alpha()
-enemy_img = pygame.image.load("wizard_duel/assets/wizard_enemy.png").convert_alpha()
-player_img = pygame.transform.scale(player_img, (100, 140))
-enemy_img = pygame.transform.scale(enemy_img, (100, 140))
-enemy_img = pygame.transform.flip(enemy_img, True, False)
+# === Assets ===
+player_img = pygame.transform.scale(pygame.image.load("wizard_duel/assets/wizard_player.png").convert_alpha(), (100,140))
+enemy_img  = pygame.transform.scale(pygame.image.load("wizard_duel/assets/wizard_enemy.png").convert_alpha(), (100,140))
+enemy_img  = pygame.transform.flip(enemy_img, True, False)
 
-# --- Stats ---
-player_health = 100
-enemy_health = 100
-player_speed = 5
-FIREBALL_SPEED = 8
-
-# --- Cooldowns ---
-FIREBALL_COOLDOWN = 500     # ms
-DODGE_COOLDOWN = 1500       # ms
-DODGE_DURATION = 150        # ms
-ENEMY_SHOOT_COOLDOWN = 1200
-ENEMY_MOVE_CHANGE = 1000
-POWERUP_SPAWN= 8000 #new heal orb every 8 seconds
-
-# --- Timers ---
-last_shot_time = 0
-last_dodge_time = 0
-dodging = False
-dodge_start = 0
-last_enemy_shot = 0
-last_enemy_move = 0
-enemy_dx, enemy_dy = 0, 0
-last_powerup_spawn = 0
-powerup = None
-
-# --- Fireballs ---
-fireballs = []
-lightnings = []     
-enemy_fireballs = []
-
-# --- Positions ---
-player_x, player_y = 150, 400
-enemy_x, enemy_y = 600, 400
-
-# --- Font & Clock ---
+font_big = pygame.font.Font(None, 72)
 font = pygame.font.Font(None, 36)
 clock = pygame.time.Clock()
 
-# --- Game loop ---
-while True:
-    dt = clock.tick(60)
-    t = pygame.time.get_ticks()
+STATE = "MENU"
+difficulty = "MEDIUM"
+mode = "AI"
 
-    for e in pygame.event.get():
-        if e.type == pygame.QUIT:
-            pygame.quit(); sys.exit()
+# === Difficulty presets ===
+DIFF = {
+    "EASY":   {"enemy_speed":2, "enemy_cd":1500},
+    "MEDIUM": {"enemy_speed":3, "enemy_cd":1000},
+    "HARD":   {"enemy_speed":4, "enemy_cd":700},
+}
 
-    # --- Player input ---
-    keys = pygame.key.get_pressed()
+# === UI helpers ===
+def draw_button(text,y,active=False):
+    color = YELLOW if active else WHITE
+    label = font.render(text,True,color)
+    rect  = label.get_rect(center=(WIDTH//2,y))
+    window.blit(label,rect)
+    return rect
 
-    # Movement
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_LEFT] or keys[pygame.K_a]:  player_x -= player_speed
-    if keys[pygame.K_RIGHT] or keys[pygame.K_d]: player_x += player_speed
-    if keys[pygame.K_UP] or keys[pygame.K_w]:    player_y -= player_speed
-    if keys[pygame.K_DOWN] or keys[pygame.K_s]:  player_y += player_speed
-
-    # Dodge (Shift)
-    if keys[pygame.K_LSHIFT] and t - last_dodge_time > DODGE_COOLDOWN:
-        dodging = True
-        dodge_start = t
-        last_dodge_time = t
-
-    # If dodging, move faster briefly
-    if dodging:
-        player_speed = 15
-        if t - dodge_start > DODGE_DURATION:
-            player_speed = 5; dodging = False
-
-    # fireball (spacebar) with cooldown
-    if keys[pygame.K_SPACE] and t - last_shot_time > FIREBALL_COOLDOWN:
-        fireballs.append([player_x + 80, player_y + 40])
-        last_shot_time = t
-    
-    # Lighning (L) 
-    if keys[pygame.K_l] and t - last_shot_time > FIREBALL_COOLDOWN:
-        lightnings.append([player_x + 80, player_y + 40])
-        last_shot_time = t
-
-    # --- Enemy random movement ---
-    if t - last_enemy_move > ENEMY_MOVE_CHANGE:
-        enemy_dx = random.choice([-3, -2, -1, 0, 1, 2, 3])
-        enemy_dy = random.choice([-2, -1, 0, 1, 2])
-        last_enemy_move = t 
-
-    enemy_x += enemy_dx; enemy_y += enemy_dy
-    enemy_x = max(400, min(enemy_x, WIDTH - 100))
-    enemy_y = max(200, min(enemy_y, HEIGHT - 140))
-
-    # --- Enemy shooting cooldown ---
-    if t - last_enemy_shot > ENEMY_SHOOT_COOLDOWN:
-        enemy_fireballs.append([enemy_x, enemy_y + 40])
-        last_enemy_shot = t
-
-    # Power-up spawn
-    if (powerup is None) and (t - last_powerup_spawn > POWERUP_SPAWN):
-        px = random.randint(100, WIDTH - 150)
-        py = random.randint(250, HEIGHT - 100)
-        powerup = [px, py]
-        last_powerup_spawn = t
-
-    # --- Move projectiles ---
-    for f in fireballs:   f[0] += 8
-    for l in lightnings:   l[0] += 5
-    for ef in enemy_fireballs:   ef[0] -= 6
-
-    # --- Collision detection ---
-    fireballs = [f for f in fireballs if f[0] < WIDTH]
-    lightnings = [l for l in lightnings if l[0] < WIDTH]
-    enemy_fireballs = [ef for ef in enemy_fireballs if ef[0] > 0]
-
-
-    # Player projectile vs enemy
-    for f in fireballs[:]:
-        if enemy_x < f[0] < enemy_x + 80 and enemy_y < f[1] < enemy_y + 140:
-            enemy_health -= 10
-            fireballs.remove(f)
-
-    for l in lightnings[:]:
-        if enemy_x < l[0] < enemy_x + 80 and enemy_y < l[1] < enemy_y + 140:
-            enemy_health -= 15
-            lightnings.remove(l)
-
-    # Enemy Projectile vs player
-    for ef in enemy_fireballs[:]:
-        if player_x < ef[0] < player_x + 80 and player_y < ef[1] < player_y + 140:
-            # If not dodging, take damage
-            if not dodging:
-                player_health -= 10
-            enemy_fireballs.remove(ef)
-    
-    # PLayer vs heal orb
-    if powerup:
-        px, py = powerup
-        if player_x < px < player_x + 100 and player_y < py < player_y + 140:
-            heal = random.randint(20, 30)
-            player_health = min(100, player_health + heal)
-            powerup = None
-
-    # --- Draw scene ---
-    window.fill(DARK_BLUE)
-    window.blit(player_img, (player_x, player_y))
-    window.blit(enemy_img, (enemy_x, enemy_y))
-
-# Fireballs
-    for f in fireballs:
-        pygame.draw.circle(window, RED, (int(f[0]), int(f[1])), 8)
-# Lightnings
-    for l in lightnings:
-        pygame.draw.circle(window, WHITE, (int(l[0]), int(l[1])), 12)
-# Heal orb
-    if powerup:
-        pygame.draw.circle(window, (0, 255, 0), (powerup[0], powerup[1]), 12)
-# Enemy fireballs
-    for ef in enemy_fireballs:
-        pygame.draw.circle(window, GREEN, (int(ef[0]), int(ef[1])), 8)
-
-    # Health bars
-    pygame.draw.rect(window, RED, (100, 50, 200, 25))
-    pygame.draw.rect(window, GREEN, (100, 50, 2 * max(0, player_health), 25))
-    pygame.draw.rect(window, RED, (500, 50, 200, 25))
-    pygame.draw.rect(window, GREEN, (500, 50, 2 * max(0, enemy_health), 25))
-
-    # Text
-    player_text = font.render(f"Player HP: {max(0, player_health)}", True, WHITE)
-    enemy_text = font.render(f"Enemy HP: {max(0, enemy_health)}", True, WHITE)
-    dodge_text = font.render("Shift = Dodge  |  Space = Fire", True, WHITE)
-    window.blit(player_text, (100, 20))
-    window.blit(enemy_text, (500, 20))
-    window.blit(dodge_text, (220, 560))
-
-    # --- Endgame ---
-    if player_health <= 0 or enemy_health <= 0:
-        result = "You Win!" if enemy_health <= 0 else "You Lose!"
-        result_text = font.render(result, True, WHITE)
-        window.blit(result_text, (WIDTH // 2 - 80, HEIGHT // 2))
+# === Menus ===
+def main_menu():
+    global STATE
+    opts=["Play vs AI","2 Player Battle","Quit"]
+    sel=0
+    while True:
+        window.fill(DARK_BLUE)
+        t=font_big.render("Wizard Duel ⚡",True,WHITE)
+        window.blit(t,(WIDTH//2-t.get_width()//2,100))
+        for i,opt in enumerate(opts):
+            draw_button(opt,250+i*80,active=(i==sel))
         pygame.display.flip()
-        pygame.time.delay(3000)
-        pygame.quit()
-        sys.exit()
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: pygame.quit();sys.exit()
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_UP:   sel=(sel-1)%len(opts)
+                if e.key==pygame.K_DOWN: sel=(sel+1)%len(opts)
+                if e.key==pygame.K_RETURN:
+                    if sel==0: STATE="DIFFICULTY";return
+                    if sel==1: STATE="2P";return
+                    if sel==2: pygame.quit();sys.exit()
 
-    pygame.display.flip()
+def diff_menu():
+    global STATE,difficulty
+    diffs=["EASY","MEDIUM","HARD"]
+    sel=1
+    while True:
+        window.fill(DARK_BLUE)
+        t=font_big.render("Select Difficulty",True,WHITE)
+        window.blit(t,(WIDTH//2-t.get_width()//2,120))
+        for i,d in enumerate(diffs): draw_button(d,250+i*80,active=(i==sel))
+        pygame.display.flip()
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: pygame.quit();sys.exit()
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_UP: sel=(sel-1)%3
+                if e.key==pygame.K_DOWN: sel=(sel+1)%3
+                if e.key==pygame.K_RETURN:
+                    difficulty=diffs[sel]; STATE="AI"; return
+                if e.key==pygame.K_ESCAPE: STATE="MENU"; return
+
+# === Game logic ===
+def play_game(mode,difficulty):
+    from math import sqrt
+    player_x,player_y=150,400
+    enemy_x,enemy_y=600,400
+    p_hp,e_hp=100,100
+    fireballs_p=[];fireballs_e=[]
+    heal_orb=None; last_orb=0
+    ORB_CD=7000
+    last_p_shot=0; last_e_shot=0
+    FIRE_CD=500
+    e_cd=DIFF[difficulty]["enemy_cd"]; e_speed=DIFF[difficulty]["enemy_speed"]
+    clock.tick(0)
+    running=True
+    while running:
+        dt=clock.tick(60)
+        t=pygame.time.get_ticks()
+        for ev in pygame.event.get():
+            if ev.type==pygame.QUIT: pygame.quit();sys.exit()
+            if ev.type==pygame.KEYDOWN and ev.key==pygame.K_ESCAPE:
+                running=False; return
+        keys=pygame.key.get_pressed()
+
+        # === Player 1 (WASD) ===
+        dx=dy=0
+        if keys[pygame.K_a]: dx=-1
+        if keys[pygame.K_d]: dx=1
+        if keys[pygame.K_w]: dy=-1
+        if keys[pygame.K_s]: dy=1
+        mag=(dx**2+dy**2)**0.5
+        if mag: dx/=mag; dy/=mag
+        player_x+=dx*5; player_y+=dy*5
+        player_x=max(0,min(player_x,WIDTH-100))
+        player_y=max(0,min(player_y,HEIGHT-140))
+
+        # === Player 2 / AI ===
+        if mode=="2P":
+            dx2=dy2=0
+            if keys[pygame.K_LEFT]: dx2=-1
+            if keys[pygame.K_RIGHT]: dx2=1
+            if keys[pygame.K_UP]: dy2=-1
+            if keys[pygame.K_DOWN]: dy2=1
+            mag2=(dx2**2+dy2**2)**0.5
+            if mag2: dx2/=mag2; dy2/=mag2
+            enemy_x+=dx2*5; enemy_y+=dy2*5
+            enemy_x=max(0,min(enemy_x,WIDTH-100))
+            enemy_y=max(0,min(enemy_y,HEIGHT-140))
+            # shoot
+            if keys[pygame.K_RETURN] and t-last_e_shot>600:
+                fireballs_e.append([enemy_x+30,enemy_y+60,-1,0])
+                last_e_shot=t
+        else:
+            # simple chase AI
+            dx=player_x-enemy_x; dy=player_y-enemy_y
+            dist=max(1,sqrt(dx*dx+dy*dy))
+            enemy_x+=dx/dist*e_speed; enemy_y+=dy/dist*e_speed
+            if t-last_e_shot>e_cd:
+                fireballs_e.append([enemy_x,enemy_y+60,dx/dist,dy/dist])
+                last_e_shot=t
+
+        # === Player1 shoot ===
+        if keys[pygame.K_SPACE] and t-last_p_shot>FIRE_CD:
+            fireballs_p.append([player_x+80,player_y+60,1,0])
+            last_p_shot=t
+
+        # === Move projectiles ===
+        for f in fireballs_p: f[0]+=f[2]*8; f[1]+=f[3]*8
+        for f in fireballs_e: f[0]+=f[2]*8; f[1]+=f[3]*8
+        fireballs_p=[f for f in fireballs_p if 0<f[0]<WIDTH and 0<f[1]<HEIGHT]
+        fireballs_e=[f for f in fireballs_e if 0<f[0]<WIDTH and 0<f[1]<HEIGHT]
+
+        # === Spawn heal orb ===
+        if heal_orb is None and t-last_orb>ORB_CD:
+            heal_orb=[random.randint(100,WIDTH-150),random.randint(200,HEIGHT-120)]
+            last_orb=t
+
+        # === Collisions ===
+        for f in fireballs_p[:]:
+            if enemy_x<f[0]<enemy_x+80 and enemy_y<f[1]<enemy_y+140:
+                e_hp-=10; fireballs_p.remove(f)
+        for f in fireballs_e[:]:
+            if player_x<f[0]<player_x+80 and player_y<f[1]<player_y+140:
+                p_hp-=10; fireballs_e.remove(f)
+        if heal_orb:
+            x,y=heal_orb
+            if player_x<x<player_x+100 and player_y<y<player_y+140:
+                p_hp=min(100,p_hp+random.randint(20,30))
+                heal_orb=None
+            elif mode=="2P" and enemy_x<x<enemy_x+100 and enemy_y<y<enemy_y+140:
+                e_hp=min(100,e_hp+random.randint(20,30))
+                heal_orb=None
+
+        # === Draw ===
+        window.fill(DARK_BLUE)
+        window.blit(player_img,(player_x,player_y))
+        window.blit(enemy_img,(enemy_x,enemy_y))
+        for f in fireballs_p: pygame.draw.circle(window,RED,(int(f[0]),int(f[1])),8)
+        for f in fireballs_e: pygame.draw.circle(window,GREEN,(int(f[0]),int(f[1])),8)
+        if heal_orb: pygame.draw.circle(window,(0,255,0),heal_orb,12)
+
+        # hp bars
+        pygame.draw.rect(window,RED,(100,50,200,25))
+        pygame.draw.rect(window,GREEN,(100,50,2*max(0,p_hp),25))
+        pygame.draw.rect(window,RED,(500,50,200,25))
+        pygame.draw.rect(window,GREEN,(500,50,2*max(0,e_hp),25))
+        window.blit(font.render(f"P1 HP:{p_hp}",True,WHITE),(100,20))
+        window.blit(font.render(f"P2 HP:{e_hp}",True,WHITE),(500,20))
+
+        if p_hp<=0 or e_hp<=0:
+            res="P1 Wins!" if e_hp<=0 else "P2 Wins!" if mode=="2P" else ("You Win!" if e_hp<=0 else "You Lose!")
+            txt=font.render(res+"  (ESC to return)",True,WHITE)
+            window.blit(txt,(WIDTH//2-txt.get_width()//2,HEIGHT//2))
+        pygame.display.flip()
+
+# === State manager ===
+while True:
+    if STATE=="MENU": main_menu()
+    elif STATE=="DIFFICULTY": diff_menu()
+    elif STATE in ["AI","2P"]:
+        play_game(STATE,difficulty)
+        STATE="MENU"
