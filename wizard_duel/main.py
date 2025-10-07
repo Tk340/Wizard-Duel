@@ -176,6 +176,9 @@ def play_game(mode,difficulty):
     fireballs_p, fireballs_e = [], []
     heal_orb=None; last_orb=0; ORB_CD=7000
 
+    p_mana = 0
+    e_mana = 0
+
     e_cd=DIFF[difficulty]["enemy_cd"]
     e_speed=DIFF[difficulty]["enemy_speed"]
 
@@ -228,20 +231,34 @@ def play_game(mode,difficulty):
                     if fire_snd: fire_snd.play()
 
                 # Player 2 Lightning
-                if keys[pygame.K_PERIOD] and t-last_e_lightning>LIGHTNING_CD:
-                    last_e_lightning=t
+                if keys[pygame.K_PERIOD] and t - last_e_lightning > LIGHTNING_CD:
+                    last_e_lightning = t
                     if fire_snd: fire_snd.play()
-                    pygame.draw.line(window,YELLOW,(enemy_x+50,enemy_y+70),(player_x+50,player_y+70),5)
-                    pygame.display.flip(); pygame.time.delay(100)
-                    if abs(enemy_y-player_y)<80 and abs(enemy_x-player_x)<400:
-                        p_hp-=20
-                        if hit_snd: hit_snd.play()
 
+                    pygame.draw.line(window, YELLOW,
+                                    (enemy_x + 50, enemy_y + 70),
+                                    (player_x + 50, player_y + 70), 5)
+                    pygame.display.flip()
+                    pygame.time.delay(150)
+
+                    if abs(enemy_y - player_y) < 80 and abs(enemy_x - player_x) < 400:
+                        p_hp -= 20
+                        if hit_snd: hit_snd.play()
+                        
                 # Player 2 Ice
-                if keys[pygame.K_SLASH] and t-last_e_ice>ICE_CD:
-                    last_e_ice=t
+                if keys[pygame.K_RSHIFT] and e_mana >= 100:
+                    e_mana = 0 
                     if fire_snd: fire_snd.play()
-                    player_slowed_until=t+3000
+                    for _ in range(10):
+                        x1 = random.randint(enemy_x - 400, enemy_x)
+                        y1 = random.randint(100, HEIGHT - 100)
+                        pygame.draw.line(window, YELLOW, (x1, y1 - 100), (x1, y1 + 100), 4)
+                    pygame.display.flip()
+                    pygame.time.delay(300)
+                    p_hp -= 35
+                    player_slowed_until = t + 2000
+                    if hit_snd: hit_snd.play()
+                   
             else:
                 # Simple chase AI
                 dx=player_x-enemy_x; dy=player_y-enemy_y
@@ -258,20 +275,35 @@ def play_game(mode,difficulty):
                 if fire_snd: fire_snd.play()
 
             # Player 1 Lightning
-            if keys[pygame.K_f] and t-last_p_lightning>LIGHTNING_CD:
-                last_p_lightning=t
+            if keys[pygame.K_f] and t - last_p_lightning > LIGHTNING_CD:
+                last_p_lightning = t
                 if fire_snd: fire_snd.play()
-                pygame.draw.line(window,YELLOW,(player_x+50,player_y+70),(enemy_x+50,enemy_y+70),5)
-                pygame.display.flip(); pygame.time.delay(100)
-                if abs(player_y-enemy_y)<80 and abs(player_x-enemy_x)<400:
-                    e_hp-=20
+
+                # Draw lightning briefly
+                pygame.draw.line(window, YELLOW,
+                                (player_x + 50, player_y + 70),
+                                (enemy_x + 50, enemy_y + 70), 5)
+                pygame.display.flip()
+                pygame.time.delay(150)
+
+                # Damage check (AFTER delay)
+                if abs(player_y - enemy_y) < 80 and abs(player_x - enemy_x) < 400:
+                    e_hp -= 20
                     if hit_snd: hit_snd.play()
 
             # Player 1 Ice
             if keys[pygame.K_g] and t-last_p_ice>ICE_CD:
-                last_p_ice=t
-                if fire_snd: fire_snd.play()
-                enemy_slowed_until=t+3000
+               p_mana = 0
+               if fire_snd: fire_snd.play()
+               for _ in range(10):
+                   x1 = random.randint(player_x, player_x + 400)
+                   y1 = random.randint(100, HEIGHT - 100)
+                   pygame.draw.line(window, YELLOW, (x1, y1 - 100), (x1, y1 + 100), 4)
+               pygame.display.flip()
+               pygame.time.delay(300)
+               e_hp -= 35
+               enemy_slowed_until = t + 2000
+               if hit_snd: hit_snd.play()
 
             # Move projectiles
             for f in fireballs_p: f[0]+=f[2]*8; f[1]+=f[3]*8
@@ -286,11 +318,15 @@ def play_game(mode,difficulty):
 
             # Collisions
             for f in fireballs_p[:]:
-                if enemy_x<f[0]<enemy_x+80 and enemy_y<f[1]<enemy_y+140:
-                    e_hp-=10; fireballs_p.remove(f)
+                if enemy_x < f[0] < enemy_x + 80 and enemy_y < f[1] < enemy_y + 140:
+                    e_hp -= 10
+                    p_mana = min(100, p_mana + 10)
+                    fireballs_p.remove(f)
             for f in fireballs_e[:]:
-                if player_x<f[0]<player_x+80 and player_y<f[1]<player_y+140:
-                    p_hp-=10; fireballs_e.remove(f)
+                if player_x < f[0] < player_x + 80 and player_y < f[1] < player_y + 140:
+                    p_hp -= 10
+                    e_mana = min(100, e_mana + 10)
+                    fireballs_e.remove(f)
             if heal_orb:
                 x,y=heal_orb
                 if player_x<x<player_x+100 and player_y<y<player_y+140:
@@ -327,6 +363,20 @@ def play_game(mode,difficulty):
         pygame.draw.rect(window,GREEN,(500,50,2*max(0,e_hp),25))
         window.blit(font.render(f"P1 HP:{p_hp}",True,WHITE),(100,20))
         window.blit(font.render(f"P2 HP:{e_hp}",True,WHITE),(500,20))
+
+        # 🧙 mana bars (below health)
+        pygame.draw.rect(window,(0,0,60),(100,80,200,10))
+        pygame.draw.rect(window,(0,100,255),(100,80,2*p_mana,10))
+        pygame.draw.rect(window,(0,0,60),(500,80,200,10))
+        pygame.draw.rect(window,(0,100,255),(500,80,2*e_mana,10))
+
+        # text when ult ready
+        if p_mana >= 100:
+            ready = font.render("ULT READY (R)", True, YELLOW)
+            window.blit(ready, (100, 95))
+        if e_mana >= 100 and mode == "2P":
+            ready2 = font.render("ULT READY (R-Shift)", True, YELLOW)
+            window.blit(ready2, (500, 95))
 
         if p_hp<=0 or e_hp<=0:
             result = ("Draw!" if p_hp<=0 and e_hp<=0 else
