@@ -1,10 +1,24 @@
 import pygame, random, sys
+from math import sqrt
+
 pygame.init()
+pygame.key.set_mods(0)  # prevent ⌘ or Ctrl interference
+
+# Optional sounds — safe load
+pygame.mixer.init()
+try:
+    fire_snd = pygame.mixer.Sound("wizard_duel/assets/sounds/fire.wav")
+    hit_snd  = pygame.mixer.Sound("wizard_duel/assets/sounds/hit.wav")
+    fire_snd.set_volume(0.5)
+    hit_snd.set_volume(0.5)
+except Exception:
+    fire_snd = None
+    hit_snd  = None
 
 # Window
 WIDTH, HEIGHT = 800, 600
 window = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Wizard Duel - Main Menu")
+pygame.display.set_caption("Wizard Duel ⚡")
 
 # Colors
 DARK_BLUE = (25, 25, 60)
@@ -24,7 +38,6 @@ clock = pygame.time.Clock()
 
 STATE = "MENU"
 difficulty = "MEDIUM"
-mode = "AI"
 
 # Difficulty presets
 DIFF = {
@@ -84,39 +97,48 @@ def diff_menu():
 
 # Game logic
 def play_game(mode,difficulty):
-    from math import sqrt
+    # Cooldowns
+    FIRE_CD = 500
+    LIGHTNING_CD = 3000
+    ICE_CD = 5000
+
+    last_p_fire = last_p_lightning = last_p_ice = 0
+    last_e_fire = last_e_lightning = last_e_ice = 0
+
+    # Status effects
+    enemy_slowed_until = 0
+    player_slowed_until = 0
+
     # Rounds
     round_num = 1
-    p1_wins = 0
-    p2_wins = 0
+    p1_wins = p2_wins = 0
     max_rounds = 3
     round_active = False
     round_start_time = pygame.time.get_ticks()
-    round_cooldown = 3000  # 3 seconds between rounds
 
     player_x,player_y=150,400
     enemy_x,enemy_y=600,400
     p_hp,e_hp=100,100
-    fireballs_p=[];fireballs_e=[]
-    heal_orb=None; last_orb=0
-    ORB_CD=7000
-    last_p_shot=0; last_e_shot=0
-    FIRE_CD=500
-    e_cd=DIFF[difficulty]["enemy_cd"]; e_speed=DIFF[difficulty]["enemy_speed"]
-    clock.tick(0)
+    fireballs_p, fireballs_e = [], []
+    heal_orb=None; last_orb=0; ORB_CD=7000
+
+    e_cd=DIFF[difficulty]["enemy_cd"]
+    e_speed=DIFF[difficulty]["enemy_speed"]
+
     running=True
     while running:
         dt=clock.tick(60)
         t=pygame.time.get_ticks()
+
         for ev in pygame.event.get():
             if ev.type==pygame.QUIT: pygame.quit();sys.exit()
             if ev.type==pygame.KEYDOWN and ev.key==pygame.K_ESCAPE:
                 running=False; return
-        keys=pygame.key.get_pressed()
+
         if round_active:
             keys=pygame.key.get_pressed()
 
-            # === Player 1 (WASD) ===
+            # Player 1 (WASD)
             dx=dy=0
             if keys[pygame.K_a]: dx=-1
             if keys[pygame.K_d]: dx=1
@@ -124,7 +146,9 @@ def play_game(mode,difficulty):
             if keys[pygame.K_s]: dy=1
             mag=(dx**2+dy**2)**0.5
             if mag: dx/=mag; dy/=mag
-            player_x+=dx*5; player_y+=dy*5
+            speed_p1 = 5 * (0.5 if t < player_slowed_until else 1)
+            player_x += dx * speed_p1
+            player_y += dy * speed_p1
             player_x=max(0,min(player_x,WIDTH-100))
             player_y=max(0,min(player_y,HEIGHT-140))
 
@@ -137,35 +161,72 @@ def play_game(mode,difficulty):
                 if keys[pygame.K_DOWN]: dy2=1
                 mag2=(dx2**2+dy2**2)**0.5
                 if mag2: dx2/=mag2; dy2/=mag2
-                enemy_x+=dx2*5; enemy_y+=dy2*5
+                speed_p2 = 5 * (0.5 if t < enemy_slowed_until else 1)
+                enemy_x += dx2 * speed_p2
+                enemy_y += dy2 * speed_p2
                 enemy_x=max(0,min(enemy_x,WIDTH-100))
                 enemy_y=max(0,min(enemy_y,HEIGHT-140))
-                # shoot
-                if keys[pygame.K_RETURN] and t-last_e_shot>600:
-                    fireballs_e.append([enemy_x+30,enemy_y+60,-1,0])
-                    last_e_shot=t
+
+                # Player 2 Fire
+                if keys[pygame.K_RETURN] and t-last_e_fire>FIRE_CD:
+                    fireballs_e.append([enemy_x,enemy_y+60,-1,0])
+                    last_e_fire=t
+                    if fire_snd: fire_snd.play()
+
+                # Player 2 Lightning
+                if keys[pygame.K_PERIOD] and t-last_e_lightning>LIGHTNING_CD:
+                    last_e_lightning=t
+                    if fire_snd: fire_snd.play()
+                    pygame.draw.line(window,YELLOW,(enemy_x+50,enemy_y+70),(player_x+50,player_y+70),5)
+                    pygame.display.flip(); pygame.time.delay(100)
+                    if abs(enemy_y-player_y)<80 and abs(enemy_x-player_x)<400:
+                        p_hp-=20
+                        if hit_snd: hit_snd.play()
+
+                # Player 2 Ice
+                if keys[pygame.K_SLASH] and t-last_e_ice>ICE_CD:
+                    last_e_ice=t
+                    if fire_snd: fire_snd.play()
+                    player_slowed_until=t+3000
             else:
-                # simple chase AI
+                # Simple chase AI
                 dx=player_x-enemy_x; dy=player_y-enemy_y
                 dist=max(1,sqrt(dx*dx+dy*dy))
                 enemy_x+=dx/dist*e_speed; enemy_y+=dy/dist*e_speed
-                if t-last_e_shot>e_cd:
+                if t-last_e_fire>e_cd:
                     fireballs_e.append([enemy_x,enemy_y+60,dx/dist,dy/dist])
-                    last_e_shot=t
+                    last_e_fire=t
 
-            # Player1 shoot
-            if keys[pygame.K_SPACE] and t-last_p_shot>FIRE_CD:
+            # Player 1 Fire
+            if keys[pygame.K_SPACE] and t-last_p_fire>FIRE_CD:
                 fireballs_p.append([player_x+80,player_y+60,1,0])
-                last_p_shot=t
+                last_p_fire=t
+                if fire_snd: fire_snd.play()
+
+            # Player 1 Lightning
+            if keys[pygame.K_f] and t-last_p_lightning>LIGHTNING_CD:
+                last_p_lightning=t
+                if fire_snd: fire_snd.play()
+                pygame.draw.line(window,YELLOW,(player_x+50,player_y+70),(enemy_x+50,enemy_y+70),5)
+                pygame.display.flip(); pygame.time.delay(100)
+                if abs(player_y-enemy_y)<80 and abs(player_x-enemy_x)<400:
+                    e_hp-=20
+                    if hit_snd: hit_snd.play()
+
+            # Player 1 Ice
+            if keys[pygame.K_g] and t-last_p_ice>ICE_CD:
+                last_p_ice=t
+                if fire_snd: fire_snd.play()
+                enemy_slowed_until=t+3000
 
             # Move projectiles
             for f in fireballs_p: f[0]+=f[2]*8; f[1]+=f[3]*8
             for f in fireballs_e: f[0]+=f[2]*8; f[1]+=f[3]*8
-            fireballs_p=[f for f in fireballs_p if 0<f[0]<WIDTH and 0<f[1]<HEIGHT]
-            fireballs_e=[f for f in fireballs_e if 0<f[0]<WIDTH and 0<f[1]<HEIGHT]
+            fireballs_p=[f for f in fireballs_p if 0<f[0]<WIDTH]
+            fireballs_e=[f for f in fireballs_e if 0<f[0]<WIDTH]
 
-            # Spawn heal orb
-            if heal_orb is None and t-last_orb>ORB_CD:
+            # Heal orb spawn
+            if heal_orb is None and t-last_orb>7000:
                 heal_orb=[random.randint(100,WIDTH-150),random.randint(200,HEIGHT-120)]
                 last_orb=t
 
@@ -185,21 +246,19 @@ def play_game(mode,difficulty):
                     e_hp=min(100,e_hp+random.randint(20,30))
                     heal_orb=None
 
-        # Draw
+        # Drawing
         window.fill(DARK_BLUE)
         if p_hp<=0 or e_hp<=0:
-            flash = pygame.Surface((WIDTH, HEIGHT))
-            flash.fill(RED)
-            flash.set_alpha(80)
-            window.blit(flash, (0, 0))
+            flash=pygame.Surface((WIDTH,HEIGHT)); flash.fill(RED); flash.set_alpha(80)
+            window.blit(flash,(0,0))
+
         if t - round_start_time < 2000:
-            msg = f"Round {round_num}!"
-            label = font.render(msg, True, WHITE)
-            window.blit(label, (WIDTH//2 - label.get_width()//2, HEIGHT//2 - 50))
-            sub = font.render("FIGHT", True, WHITE)
-            window.blit(sub, (WIDTH//2 - sub.get_width()//2, HEIGHT//2 + 10))
+            label=font.render(f"Round {round_num}!",True,WHITE)
+            window.blit(label,(WIDTH//2-label.get_width()//2,HEIGHT//2-50))
+            sub=font.render("FIGHT!",True,WHITE)
+            window.blit(sub,(WIDTH//2-sub.get_width()//2,HEIGHT//2+10))
         else:
-            round_active = True
+            round_active=True
 
         window.blit(player_img,(player_x,player_y))
         window.blit(enemy_img,(enemy_x,enemy_y))
@@ -207,54 +266,23 @@ def play_game(mode,difficulty):
         for f in fireballs_e: pygame.draw.circle(window,GREEN,(int(f[0]),int(f[1])),8)
         if heal_orb: pygame.draw.circle(window,(0,255,0),heal_orb,12)
 
-        # hp bars
+        # HP bars
         pygame.draw.rect(window,RED,(100,50,200,25))
         pygame.draw.rect(window,GREEN,(100,50,2*max(0,p_hp),25))
         pygame.draw.rect(window,RED,(500,50,200,25))
         pygame.draw.rect(window,GREEN,(500,50,2*max(0,e_hp),25))
         window.blit(font.render(f"P1 HP:{p_hp}",True,WHITE),(100,20))
         window.blit(font.render(f"P2 HP:{e_hp}",True,WHITE),(500,20))
-        score_text = font.render(f"Rounds: P1 {p1_wins} - {p2_wins} P2", True, WHITE)
-        window.blit(score_text, (WIDTH//2 - score_text.get_width()//2, 100))
 
-        if p_hp <= 0 or e_hp <= 0:
-            if p_hp <= 0 and e_hp <= 0:
-                result = "Draw!"
-            elif e_hp <= 0:
-                p1_wins += 1
-                result = "Player 1 Wins Round!"
-            else:
-                p2_wins += 1
-                result = "Player 2 Wins Round!" if mode == "2P" else "Enemy Wins Round!"
-
-            # Flash / pause
-            txt = font.render(result, True, WHITE)
-            window.blit(txt, (WIDTH//2 - txt.get_width()//2, HEIGHT//2))
+        if p_hp<=0 or e_hp<=0:
+            result = ("Draw!" if p_hp<=0 and e_hp<=0 else
+                      "Player 1 Wins!" if e_hp<=0 else
+                      "Player 2 Wins!" if mode=="2P" else "Enemy Wins!")
+            txt=font.render(result,True,WHITE)
+            window.blit(txt,(WIDTH//2-txt.get_width()//2,HEIGHT//2))
             pygame.display.flip()
             pygame.time.delay(2000)
-
-            # Check for match end
-            if p1_wins == 2 or p2_wins == 2:
-                final = "PLAYER 1 WINS THE MATCH!" if p1_wins == 2 else ("PLAYER 2 WINS!" if mode=="2P" else "ENEMY WINS!")
-                end = font.render(final + " (ESC to return)", True, WHITE)
-                window.fill(DARK_BLUE)
-                window.blit(end, (WIDTH//2 - end.get_width()//2, HEIGHT//2))
-                pygame.display.flip()
-                pygame.time.delay(3000)
-                running = False
-                return
-
-            # Reset for next round
-            round_num += 1
-            p_hp = 100
-            e_hp = 100
-            player_x, player_y = 150, 400
-            enemy_x, enemy_y = 600, 400
-            fireballs_p.clear()
-            fireballs_e.clear()
-            heal_orb = None
-            round_active = False
-            round_start_time = pygame.time.get_ticks()
+            running=False; return
 
         pygame.display.flip()
 
