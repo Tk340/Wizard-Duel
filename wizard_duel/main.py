@@ -231,7 +231,8 @@ def play_game(mode,difficulty):
                     if fire_snd: fire_snd.play()
 
                 # Player 2 Lightning
-                if keys[pygame.K_PERIOD] and t - last_e_lightning > LIGHTNING_CD:
+                if keys[pygame.K_PERIOD] and t - last_e_lightning > LIGHTNING_CD and e_mana >= 20:
+                    e_mana -= 20
                     last_e_lightning = t
                     if fire_snd: fire_snd.play()
 
@@ -241,26 +242,28 @@ def play_game(mode,difficulty):
                     pygame.display.flip()
                     pygame.time.delay(150)
 
-                    if abs(enemy_y - player_y) < 80 and abs(enemy_x - player_x) < 400:
-                        p_hp -= 20
-                        if hit_snd: hit_snd.play()
-                        
-                # Player 2 Ice
-                if keys[pygame.K_RSHIFT] and e_mana >= 100:
-                    e_mana = 0 
-                    if fire_snd: fire_snd.play()
-                    for _ in range(10):
-                        x1 = random.randint(enemy_x - 400, enemy_x)
-                        y1 = random.randint(100, HEIGHT - 100)
-                        pygame.draw.line(window, YELLOW, (x1, y1 - 100), (x1, y1 + 100), 4)
-                    pygame.display.flip()
-                    pygame.time.delay(300)
-                    p_hp -= 35
-                    player_slowed_until = t + 2000
+                    p_hp -= 20
                     if hit_snd: hit_snd.play()
+                        
+                # Player 2 Ice, same as Player 1
+                if keys[pygame.K_SLASH] and t-last_e_ice>ICE_CD:
+                    if e_mana >= 40:
+                        e_mana -= 40
+                        last_e_ice=t
+                        if fire_snd: fire_snd.play()
+                        x1 = player_x + 50
+                        y1 = player_y + 70
+                        pygame.draw.circle(window, (150, 200, 255), (x1, y1), 50)
+                        pygame.display.flip()
+                        pygame.time.delay(300)
+                        player_slowed_until = t + 3000
+                        if hit_snd: hit_snd.play()
                    
             else:
                 # Simple chase AI
+                # slow down if frozen
+                if not t < enemy_slowed_until:
+                    e_speed = DIFF[difficulty]["enemy_speed"]
                 dx=player_x-enemy_x; dy=player_y-enemy_y
                 dist=max(1,sqrt(dx*dx+dy*dy))
                 enemy_x+=dx/dist*e_speed; enemy_y+=dy/dist*e_speed
@@ -275,7 +278,8 @@ def play_game(mode,difficulty):
                 if fire_snd: fire_snd.play()
 
             # Player 1 Lightning
-            if keys[pygame.K_f] and t - last_p_lightning > LIGHTNING_CD:
+            if keys[pygame.K_f] and t - last_p_lightning > LIGHTNING_CD and p_mana >= 20:
+                p_mana -= 20
                 last_p_lightning = t
                 if fire_snd: fire_snd.play()
 
@@ -287,23 +291,26 @@ def play_game(mode,difficulty):
                 pygame.time.delay(150)
 
                 # Damage check (AFTER delay)
-                if abs(player_y - enemy_y) < 80 and abs(player_x - enemy_x) < 400:
-                    e_hp -= 20
-                    if hit_snd: hit_snd.play()
+            #    if abs(player_y - enemy_y) < 80 and abs(player_x - enemy_x) < 400:
+                e_hp -= 20
+                if hit_snd: hit_snd.play()
 
             # Player 1 Ice
             if keys[pygame.K_g] and t-last_p_ice>ICE_CD:
-               p_mana = 0
-               if fire_snd: fire_snd.play()
-               for _ in range(10):
-                   x1 = random.randint(player_x, player_x + 400)
-                   y1 = random.randint(100, HEIGHT - 100)
-                   pygame.draw.line(window, YELLOW, (x1, y1 - 100), (x1, y1 + 100), 4)
-               pygame.display.flip()
-               pygame.time.delay(300)
-               e_hp -= 35
-               enemy_slowed_until = t + 2000
-               if hit_snd: hit_snd.play()
+                if p_mana >= 40:
+                    p_mana -= 40
+                    last_p_ice=t
+                    if fire_snd: fire_snd.play()
+                    # freeze the enemy for 3 seconds, no damage
+                    # draw ice puddle on enemy's position
+                    x1 = enemy_x + 50
+                    y1 = enemy_y + 70
+                    pygame.draw.circle(window, (150, 200, 255), (x1, y1), 50)
+                    pygame.display.flip()
+                    pygame.time.delay(300)
+                    enemy_slowed_until = t + 3000
+                    e_speed = DIFF[difficulty]["enemy_speed"] / 2.5
+                    if hit_snd: hit_snd.play()
 
             # Move projectiles
             for f in fireballs_p: f[0]+=f[2]*8; f[1]+=f[3]*8
