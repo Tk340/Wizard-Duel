@@ -162,6 +162,12 @@ def play_game(mode,difficulty):
     # Status effects
     enemy_slowed_until = 0
     player_slowed_until = 0
+    player_damage_over_time = 0
+    enemy_damage_over_time = 0
+    player_damaged_until = 0
+    enemy_damaged_until = 0
+    ult_start = 0
+    ult_start_e = 0
 
     # Rounds
     round_num = 1
@@ -175,6 +181,8 @@ def play_game(mode,difficulty):
     p_hp,e_hp=100,100
     fireballs_p, fireballs_e = [], []
     heal_orb=None; last_orb=0; ORB_CD=7000
+    ult_orb = None
+    ult_orb_e = None
 
     p_mana = 0
     e_mana = 0
@@ -258,7 +266,13 @@ def play_game(mode,difficulty):
                         pygame.time.delay(300)
                         player_slowed_until = t + 3000
                         if hit_snd: hit_snd.play()
-                   
+                # Player 2 ult
+                if keys[pygame.K_RSHIFT] and e_mana >= 100:
+                    e_mana -= 100
+                    enemy_damage_over_time = 15
+                    player_damaged_until = t + 4000
+                    ult_orb_e = (player_x + 50, player_y + 70)
+
             else:
                 # Simple chase AI
                 # slow down if frozen
@@ -311,7 +325,18 @@ def play_game(mode,difficulty):
                     enemy_slowed_until = t + 3000
                     e_speed = DIFF[difficulty]["enemy_speed"] / 2.5
                     if hit_snd: hit_snd.play()
-
+            
+            # Player 1 ult
+            # 15 damage per second for 4 seconds
+            # keep main loop running to allow movement
+            if keys[pygame.K_r] and p_mana >= 100:
+                p_mana -= 100
+                # use damage over time variables
+                player_damage_over_time = 15
+                enemy_damaged_until = t + 4000
+                # do not use while loop, just set the variables and let main loop handle it
+                # draw a big red circle around enemy to indicate ult
+                ult_orb = (enemy_x + 50, enemy_y + 70)
             # Move projectiles
             for f in fireballs_p: f[0]+=f[2]*8; f[1]+=f[3]*8
             for f in fireballs_e: f[0]+=f[2]*8; f[1]+=f[3]*8
@@ -328,11 +353,13 @@ def play_game(mode,difficulty):
                 if enemy_x < f[0] < enemy_x + 80 and enemy_y < f[1] < enemy_y + 140:
                     e_hp -= 10
                     p_mana = min(100, p_mana + 10)
+                    e_mana = min(100, e_mana + 5)
                     fireballs_p.remove(f)
             for f in fireballs_e[:]:
                 if player_x < f[0] < player_x + 80 and player_y < f[1] < player_y + 140:
                     p_hp -= 10
                     e_mana = min(100, e_mana + 10)
+                    p_mana = min(100, p_mana + 5)
                     fireballs_e.remove(f)
             if heal_orb:
                 x,y=heal_orb
@@ -342,6 +369,21 @@ def play_game(mode,difficulty):
                 elif mode=="2P" and enemy_x<x<enemy_x+100 and enemy_y<y<enemy_y+140:
                     e_hp=min(100,e_hp+random.randint(20,30))
                     heal_orb=None
+            
+            #apply damage over time
+            if t < player_damaged_until:
+                #enemy_damage_over_time per second
+                p_hp -= (enemy_damage_over_time * dt / 1000)
+            if t < enemy_damaged_until:
+                e_hp -= (player_damage_over_time * dt / 1000)
+
+            # if player or enemy damage over time ended, reset variables
+            if t >= player_damaged_until:
+                enemy_damage_over_time = 0
+                ult_orb = None
+            if t >= enemy_damaged_until:
+                player_damage_over_time = 0
+                ult_orb_e = None
 
         # Drawing
         window.fill(DARK_BLUE)
@@ -357,21 +399,28 @@ def play_game(mode,difficulty):
         else:
             round_active=True
 
-        window.blit(player_img,(player_x,player_y))
-        window.blit(enemy_img,(enemy_x,enemy_y))
         for f in fireballs_p: pygame.draw.circle(window,RED,(int(f[0]),int(f[1])),8)
         for f in fireballs_e: pygame.draw.circle(window,GREEN,(int(f[0]),int(f[1])),8)
         if heal_orb: pygame.draw.circle(window,(0,255,0),heal_orb,12)
+        if t < player_damaged_until:
+            ult_orb = (player_x + 50, player_y + 70)
+            pygame.draw.circle(window, (255, 0, 255), ult_orb, 70)
+        if t < enemy_damaged_until:
+            ult_orb_e = (enemy_x + 50, enemy_y + 70)
+            pygame.draw.circle(window, (255, 0, 255), ult_orb_e, 70)
+        
+        window.blit(player_img,(player_x,player_y))
+        window.blit(enemy_img,(enemy_x,enemy_y))
 
         # HP bars
         pygame.draw.rect(window,RED,(100,50,200,25))
         pygame.draw.rect(window,GREEN,(100,50,2*max(0,p_hp),25))
         pygame.draw.rect(window,RED,(500,50,200,25))
         pygame.draw.rect(window,GREEN,(500,50,2*max(0,e_hp),25))
-        window.blit(font.render(f"P1 HP:{p_hp}",True,WHITE),(100,20))
-        window.blit(font.render(f"P2 HP:{e_hp}",True,WHITE),(500,20))
+        window.blit(font.render(f"P1 HP:{int(p_hp)}",True,WHITE),(100,20))
+        window.blit(font.render(f"P2 HP:{int(e_hp)}",True,WHITE),(500,20))
 
-        # 🧙 mana bars (below health)
+        # mana bars (below health)
         pygame.draw.rect(window,(0,0,60),(100,80,200,10))
         pygame.draw.rect(window,(0,100,255),(100,80,2*p_mana,10))
         pygame.draw.rect(window,(0,0,60),(500,80,200,10))
@@ -389,6 +438,7 @@ def play_game(mode,difficulty):
             result = ("Draw!" if p_hp<=0 and e_hp<=0 else
                       "Player 1 Wins!" if e_hp<=0 else
                       "Player 2 Wins!" if mode=="2P" else "Enemy Wins!")
+            STATE = "MENU"
             txt=font.render(result,True,WHITE)
             window.blit(txt,(WIDTH//2-txt.get_width()//2,HEIGHT//2))
             pygame.display.flip()
