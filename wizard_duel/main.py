@@ -276,14 +276,93 @@ def play_game(mode,difficulty):
             else:
                 # Simple chase AI
                 # slow down if frozen
-                if not t < enemy_slowed_until:
-                    e_speed = DIFF[difficulty]["enemy_speed"]
-                dx=player_x-enemy_x; dy=player_y-enemy_y
-                dist=max(1,sqrt(dx*dx+dy*dy))
-                enemy_x+=dx/dist*e_speed; enemy_y+=dy/dist*e_speed
-                if t-last_e_fire>e_cd:
-                    fireballs_e.append([enemy_x,enemy_y+60,dx/dist,dy/dist])
-                    last_e_fire=t
+                dist_x = player_x - enemy_x
+                dist_y = player_y - enemy_y
+                distance = sqrt(dist_x**2 + dist_y**2)
+
+                # AI priorities
+                want_heal = heal_orb and e_hp < 60
+                want_attack = distance < 450
+                stop_getting_closer = distance < 200
+                too_close = distance < 150
+                can_lightning = e_mana >= 20 and t - last_e_lightning > LIGHTNING_CD
+                can_ice = e_mana >= 40 and t - last_e_ice > ICE_CD
+                can_fire = t - last_e_fire > e_cd
+
+                target_x, target_y = player_x, player_y
+
+                # Healing behavior
+                if want_heal:
+                    hx, hy = heal_orb
+                    target_x, target_y = hx - 50, hy - 70
+                    # if abs(enemy_x - hx) < 40 and abs(enemy_y - hy) < 40:
+                    #     want_attack = False
+
+                # Maintain distance 
+                if stop_getting_closer and not want_heal:
+                    target_x = enemy_x
+                    target_y = enemy_y
+                elif too_close and not want_heal:
+                    target_x = enemy_x
+                    target_y = enemy_y
+                elif distance > 450 and not want_heal:
+                    target_x = player_x  # move in
+                    target_y = player_y
+                # else:
+                #     # random strafe
+                #     if random.random() < 0.03:
+                #         strafe = random.choice([-1, 1])
+                #         target_x += 100 * strafe
+
+                # Move toward target
+                dx = target_x - enemy_x if abs(target_x - enemy_x) > 20 else 0
+                dy = target_y - enemy_y if abs(target_y - enemy_y) > 20 else 0
+                mag = max(1, sqrt(dx**2 + dy**2))
+                enemy_x += (dx / mag) * e_speed
+                enemy_y += (dy / mag) * e_speed
+                enemy_x = max(0, min(enemy_x, WIDTH - 100))
+                enemy_y = max(0, min(enemy_y, HEIGHT - 140))
+
+                # Attacks
+                if want_attack and can_fire and not want_heal:
+                    fireballs_e.append([enemy_x, enemy_y + 60, dist_x / distance, dist_y / distance])
+                    last_e_fire = t
+                    if fire_snd: fire_snd.play()
+
+                # queue special moves (handled later safely)
+                ai_lightning = can_lightning and random.random() < 0.02 and distance < 300
+                ai_ice = can_ice and random.random() < 0.015 and distance < 300
+
+                if ai_lightning:
+                    e_mana -= 20
+                    last_e_lightning = t
+                    e_mana -= 20
+                    last_e_lightning = t
+                    if fire_snd: fire_snd.play()
+
+                    pygame.draw.line(window, YELLOW,
+                                    (enemy_x + 50, enemy_y + 70),
+                                    (player_x + 50, player_y + 70), 5)
+                    pygame.display.flip()
+                    pygame.time.delay(150)
+
+                    p_hp -= 20
+                    if hit_snd: hit_snd.play()
+
+                if ai_ice:
+                    e_mana -= 40
+                    last_e_ice = t
+                    e_mana -= 40
+                    last_e_ice=t
+                    if fire_snd: fire_snd.play()
+                    x1 = player_x + 50
+                    y1 = player_y + 70
+                    pygame.draw.circle(window, (150, 200, 255), (x1, y1), 50)
+                    pygame.display.flip()
+                    pygame.time.delay(300)
+                    player_slowed_until = t + 3000
+                    if hit_snd: hit_snd.play()
+
 
             # Player 1 Fire
             if keys[pygame.K_SPACE] and t-last_p_fire>FIRE_CD:
@@ -366,7 +445,7 @@ def play_game(mode,difficulty):
                 if player_x<x<player_x+100 and player_y<y<player_y+140:
                     p_hp=min(100,p_hp+random.randint(20,30))
                     heal_orb=None
-                elif mode=="2P" and enemy_x<x<enemy_x+100 and enemy_y<y<enemy_y+140:
+                elif enemy_x<x<enemy_x+100 and enemy_y<y<enemy_y+140:
                     e_hp=min(100,e_hp+random.randint(20,30))
                     heal_orb=None
             
